@@ -52,7 +52,7 @@ if ( !class_exists( 'WPSL_i18n' ) ) {
             if ( $this->wpml_active == null ) {
                 $this->wpml_active = function_exists( 'icl_register_string' );
             }
-            
+
             return $this->wpml_active;
         } 
 
@@ -82,7 +82,13 @@ if ( !class_exists( 'WPSL_i18n' ) ) {
         public function maybe_get_wpml_id( $store_id ) {
             
             $return_original_id = apply_filters( 'wpsl_return_original_wpml_id', true );
-            $translated_id      = icl_object_id( $store_id, 'wpsl_stores', $return_original_id, ICL_LANGUAGE_CODE );
+
+            // icl_object_id is deprecated as of 3.2
+            if ( defined( 'ICL_SITEPRESS_VERSION' ) && version_compare( ICL_SITEPRESS_VERSION, 3.2, '>=' ) ) {
+                $translated_id = apply_filters( 'wpml_object_id', $store_id, 'wpsl_stores', $return_original_id, ICL_LANGUAGE_CODE );
+            } else {
+                $translated_id = icl_object_id( $store_id, 'wpsl_stores', $return_original_id, ICL_LANGUAGE_CODE );
+            }
 
             // If '$return_original_id' is set to false, NULL is returned if no translation exists.
             if ( is_null( $translated_id ) ) {
@@ -107,20 +113,21 @@ if ( !class_exists( 'WPSL_i18n' ) ) {
             
             global $wpsl_settings;
 
-            $translation = '';
-            
-            /* Check if we need to use WPML for the translation */
-            if ( $this->wpml_exists() ) {
-                $translation = icl_t( 'admin_texts_wpsl_settings', '[wpsl_settings]' . $name, $text );
-            }
+            if ( defined( 'WPML_ST_VERSION' ) ) {
+                $translation = $text;
+            } elseif ( defined( 'POLYLANG_VERSION' ) && defined( 'PLL_INC' ) ) {
 
-            /* If we don't have a translation here, we use the value set on the settings page */
-            if ( empty( $translation ) ) {
+                if ( !function_exists( 'pll__' ) ) {
+                    require_once PLL_INC . '/api.php';
+                }
+
+                $translation = pll__( $text );
+            } else {
                 $translation = stripslashes( $wpsl_settings[$name] );
             }
-            
+
             return $translation;
-        }  
+        }
         
         /**
          * If a multilingual plugin like WPML or qTranslate X is active
@@ -133,7 +140,7 @@ if ( !class_exists( 'WPSL_i18n' ) ) {
             
             $language_code = '';
             
-            if ( $this->wpml_exists() ) {
+            if ( $this->wpml_exists() && defined( 'ICL_LANGUAGE_CODE' ) ) {
                 $language_code = ICL_LANGUAGE_CODE;
             } else if ( $this->qtrans_exists() ) {
                 
