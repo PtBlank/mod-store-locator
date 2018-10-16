@@ -116,5 +116,4 @@ if ( !class_exists( 'WP_Store_locator' ) ) {
 	}
 	
 	$GLOBALS['wpsl'] = new WP_Store_locator();
-
 }

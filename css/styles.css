@@ -332,7 +332,7 @@ div elements, we disable it to prevent it from messing up the map
 }
 
 #wpsl-wrap #wpsl-result-list ul li {
-    list-style: disc;
+    list-style: disc !important;
 }
 
 #wpsl-wrap #wpsl-result-list ol li {
