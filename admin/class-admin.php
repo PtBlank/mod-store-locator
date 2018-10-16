@@ -50,11 +50,11 @@ if ( !class_exists( 'WPSL_Admin' ) ) {
 
             add_action( 'init',                                 array( $this, 'init' ) );
             add_action( 'admin_menu',                           array( $this, 'create_admin_menu' ) );
-            add_action( 'admin_init',                           array( $this, 'setting_warnings' ) );
+			add_action( 'admin_init',                           array( $this, 'setting_warnings' ) );
             add_action( 'delete_post',                          array( $this, 'maybe_delete_autoload_transient' ) );
             add_action( 'wp_trash_post',                        array( $this, 'maybe_delete_autoload_transient' ) );
             add_action( 'untrash_post',                         array( $this, 'maybe_delete_autoload_transient' ) );
-            add_action( 'admin_enqueue_scripts',                array( $this, 'admin_scripts' ) );
+            add_action( 'admin_enqueue_scripts',                array( $this, 'admin_scripts' ) );	
             add_filter( 'plugin_row_meta',                      array( $this, 'add_plugin_meta_row' ), 10, 2 );
             add_filter( 'plugin_action_links_' . WPSL_BASENAME, array( $this, 'add_action_links' ), 10, 2 );
             add_filter( 'admin_footer_text',                    array( $this, 'admin_footer_text' ), 1 );
@@ -68,14 +68,12 @@ if ( !class_exists( 'WPSL_Admin' ) ) {
          * @return void
          */
         public function includes() {
-            require_once( WPSL_PLUGIN_DIR . 'admin/class-shortcode-generator.php' );
             require_once( WPSL_PLUGIN_DIR . 'admin/class-notices.php' );
             require_once( WPSL_PLUGIN_DIR . 'admin/class-license-manager.php' );
             require_once( WPSL_PLUGIN_DIR . 'admin/class-metaboxes.php' ); 
             require_once( WPSL_PLUGIN_DIR . 'admin/class-geocode.php' );
             require_once( WPSL_PLUGIN_DIR . 'admin/class-settings.php' );
             require_once( WPSL_PLUGIN_DIR . 'admin/upgrade.php' );
-            require_once( WPSL_PLUGIN_DIR . 'admin/data-export.php' );
 		}
         
         /**
@@ -87,7 +85,7 @@ if ( !class_exists( 'WPSL_Admin' ) ) {
 		public function init() {
             $this->notices       = new WPSL_Notices();
             $this->metaboxes     = new WPSL_Metaboxes();
-            $this->geocode       = new WPSL_Geocode();
+			$this->geocode       = new WPSL_Geocode();
             $this->settings_page = new WPSL_Settings();
 		}
                 
@@ -114,10 +112,10 @@ if ( !class_exists( 'WPSL_Admin' ) ) {
             if ( ( current_user_can( 'install_plugins' ) ) && is_admin() ) {
                 foreach ( $warnings as $setting_name => $warning ) {
                     if ( empty( $wpsl_settings[$setting_name] ) && !get_user_meta( $current_user->ID, 'wpsl_disable_' . $warning . '_warning' ) ) {
-                        if ( $warning == 'key' ) {
-                            $this->setting_warning[$warning] = sprintf( __( "You need to create %sAPI keys%s for Google Maps before you can use the store locator! %sDismiss%s", "wpsl" ), '<a href="https://wpstorelocator.co/document/create-google-api-keys/">', "</a>", "<a href='" . esc_url( wp_nonce_url( add_query_arg( 'wpsl-notice', 'key' ), 'wpsl_notices_nonce', '_wpsl_notice_nonce' ) ) . "'>", "</a>" );
+                        if ( $warning == 'location' ) {
+                           $this->setting_warning[$warning] = sprintf( __( "Before adding the [wpsl] shortcode to a page, please don't forget to define a start point on the %ssettings%s page. %sDismiss%s", "wpsl" ), "<a href='" . admin_url( 'edit.php?post_type=wpsl_stores&page=wpsl_settings' ) . "'>", "</a>", "<a href='" . esc_url( wp_nonce_url( add_query_arg( 'wpsl-notice', 'location' ), 'wpsl_notices_nonce', '_wpsl_notice_nonce' ) ) . "'>", "</a>" ); 
                         } else {
-                            $this->setting_warning[$warning] = sprintf( __( "Before adding the [wpsl] shortcode to a page, please don't forget to define a start point on the %ssettings%s page. %sDismiss%s", "wpsl" ), "<a href='" . admin_url( 'edit.php?post_type=wpsl_stores&page=wpsl_settings' ) . "'>", "</a>", "<a href='" . esc_url( wp_nonce_url( add_query_arg( 'wpsl-notice', 'location' ), 'wpsl_notices_nonce', '_wpsl_notice_nonce' ) ) . "'>", "</a>" );
+                           $this->setting_warning[$warning] = sprintf( __( "As of %sJune 22, 2016%s Google Maps no longer allows request for new projects that doesn't include an %sAPI key%s. %sDismiss%s", "wpsl" ), '<a href="https://googlegeodevelopers.blogspot.nl/2016/06/building-for-scale-updates-to-google.html">', "</a>", '<a href="https://wpstorelocator.co/document/create-google-api-keys/">', "</a>", "<a href='" . esc_url( wp_nonce_url( add_query_arg( 'wpsl-notice', 'key' ), 'wpsl_notices_nonce', '_wpsl_notice_nonce' ) ) . "'>", "</a>" );
                         }
                     }
                 }
@@ -292,17 +290,15 @@ if ( !class_exists( 'WPSL_Admin' ) ) {
         public function admin_js_l10n() {
             
             $admin_js_l10n = array(
-                'noAddress'       => __( 'Cannot determine the address at this location.', 'wpsl' ),
-                'geocodeFail'     => __( 'Geocode was not successful for the following reason', 'wpsl' ),
-                'securityFail'    => __( 'Security check failed, reload the page and try again.', 'wpsl' ),
-                'requiredFields'  => __( 'Please fill in all the required store details.', 'wpsl' ),
-                'missingGeoData'  => __( 'The map preview requires all the location details.', 'wpsl' ),
-                'closedDate'      => __( 'Closed', 'wpsl' ),
-                'styleError'      => __( 'The code for the map style is invalid.', 'wpsl' ),
-                'browserKeyError' => sprintf( __( 'There\'s a problem with the provided %sbrowser key%s. %s You can read more about how to determine the exact issue, and how to solve it %shere%s.','wpsl' ), '<a href="https://wpstorelocator.co/document/create-google-api-keys/#browser-key">','</a>', '<br><br>', '<a href="https://wpstorelocator.co/document/create-google-api-keys/#troubleshooting">','</a>' ),
-                'dismissNotice'   => __( 'Dismiss this notice.', 'wpsl' )
+                'noAddress'      => __( 'Cannot determine the address at this location.', 'wpsl' ),
+                'geocodeFail'    => __( 'Geocode was not successful for the following reason', 'wpsl' ),
+                'securityFail'   => __( 'Security check failed, reload the page and try again.', 'wpsl' ),
+                'requiredFields' => __( 'Please fill in all the required store details.', 'wpsl' ),
+                'missingGeoData' => __( 'The map preview requires all the location details.', 'wpsl' ),
+                'closedDate'     => __( 'Closed', 'wpsl' ),
+                'styleError'     => __( 'The code for the map style is invalid.', 'wpsl' )
             );
-
+            
             return $admin_js_l10n;
         }
         
@@ -315,38 +311,15 @@ if ( !class_exists( 'WPSL_Admin' ) ) {
         public function js_settings() {
             
             global $wpsl_settings;
-
+            
             $js_settings = array(
-                'hourFormat'     => $wpsl_settings['editor_hour_format'],
-                'defaultLatLng'  => $this->get_default_lat_lng(),
-                'defaultZoom'    => 6,
-                'mapType'        => $wpsl_settings['editor_map_type'],
-                'requiredFields' => array( 'address', 'city', 'country' ),
-                'ajaxurl'        => wpsl_get_ajax_url()
+                'hourFormat'    => $wpsl_settings['editor_hour_format'],
+                'defaultLatLng' => '52.378153,4.899363',
+                'defaultZoom'   => 6,
+                'mapType'       => $wpsl_settings['editor_map_type']
             );
-
+            
             return apply_filters( 'wpsl_admin_js_settings', $js_settings );
-        }
-
-        /**
-         * Get the coordinates that are used to
-         * show the map on the settings page.
-         *
-         * @since 2.2.5
-         * @return string $startLatLng The start coordinates
-         */
-        public function get_default_lat_lng() {
-
-            global $wpsl_settings;
-
-            $startLatLng = $wpsl_settings['start_latlng'];
-
-            // If no start coordinates exists, then set the default to Holland.
-            if ( !$startLatLng ) {
-                $startLatLng = '52.378153,4.899363';
-            }
-
-            return $startLatLng;
         }
 
         /**
@@ -356,7 +329,7 @@ if ( !class_exists( 'WPSL_Admin' ) ) {
          * @return void
          */
 		public function admin_scripts() {
-
+            
             $min = ( defined( 'SCRIPT_DEBUG' ) && SCRIPT_DEBUG ) ? '' : '.min'; 
             
             // Always load the main js admin file to make sure the "dismiss" link in the location notice works.
@@ -393,12 +366,6 @@ if ( !class_exists( 'WPSL_Admin' ) ) {
          * @return void
          */
         public function maybe_show_pointer() {
-
-            $disable_pointer = apply_filters( 'wpsl_disable_welcome_pointer', false );
-
-            if ( $disable_pointer ) {
-                return;
-            }
             
             $dismissed_pointers = explode( ',', (string) get_user_meta( get_current_user_id(), 'dismissed_wp_pointers', true ) );
             

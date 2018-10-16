@@ -1,20 +1,14 @@
 jQuery( document ).ready( function( $ ) { 
-var geocoder, map, directionsDisplay, directionsService, autoCompleteLatLng,
+var geocoder, map, directionsDisplay, directionsService, geolocationLatlng, autoCompleteLatLng,
 	activeWindowMarkerId, infoWindow, markerClusterer, startMarkerData, startAddress,
 	openInfoWindow = [],
 	markersArray = [],
-    mapsArray = [],
 	markerSettings = {},
 	directionMarkerPosition = {},
 	mapDefaults = {},
 	resetMap = false,
 	streetViewAvailable = false,
-    autoLoad = ( typeof wpslSettings !== "undefined" ) ? wpslSettings.autoLoad : "",
-    userGeolocation = {},
-    statistics = {
-        enabled: ( typeof wpslSettings.collectStatistics !== "undefined" ) ? true : false,
-		address_components: ''
-	};
+	autoLoad = ( typeof wpslSettings !== "undefined" ) ? wpslSettings.autoLoad : "";
 
 /** 
  * Set the underscore template settings.
@@ -49,12 +43,6 @@ if ( $( ".wpsl-gmap-canvas" ).length ) {
 
 		initializeGmap( mapId, mapIndex );
 	});
-
-    /*
-     * Check if we are dealing with a map that's placed in a tab,
-     * if so run a fix to prevent the map from showing up grey.
-     */
-    maybeApplyTabFix();
 }
 
 /**
@@ -66,27 +54,11 @@ if ( $( ".wpsl-gmap-canvas" ).length ) {
  * @returns {void}
  */
 function initializeGmap( mapId, mapIndex ) {
-    var mapOptions, mapDetails, settings, infoWindow, latLng,
-		bounds, mapData, zoomLevel,
-		defaultZoomLevel = Number( wpslSettings.zoomLevel ),
-        maxZoom = Number( wpslSettings.autoZoomLevel );
+    var mapOptions, settings, infoWindow, latLng, bounds, mapData, locationCount,
+		maxZoom = Number( wpslSettings.autoZoomLevel );
 
-	// Get the settings that belongs to the current map.
+	// Get the settings that belong to the map.
 	settings = getMapSettings( mapIndex );
-
-	/*
-	 * This is the value from either the settings page,
-	 * or the zoom level set through the shortcode.
-	 */
-    zoomLevel = Number( settings.zoomLevel );
-
-    /*
-     * If they are not equal, then the zoom value is set through the shortcode.
-     * If this is the case, then we use that as the max zoom level.
-     */
-    if ( zoomLevel !== defaultZoomLevel ) {
-        maxZoom = zoomLevel;
-	}
 
 	// Create a new infoWindow, either with the infobox libray or use the default one.
 	infoWindow = newInfoWindow();
@@ -97,13 +69,12 @@ function initializeGmap( mapId, mapIndex ) {
 
 	// Set the map options.
     mapOptions = {
-		zoom: zoomLevel,
+		zoom: Number( settings.zoomLevel ),
 		center: settings.startLatLng,
 		mapTypeId: google.maps.MapTypeId[ settings.mapType.toUpperCase() ],
 		mapTypeControl: Number( settings.mapTypeControl ) ? true : false,
 		scrollwheel: Number( settings.scrollWheel ) ? true : false,
 		streetViewControl: Number( settings.streetView ) ? true : false,
-        gestureHandling: settings.gestureHandling,
 		zoomControlOptions: {
 			position: google.maps.ControlPosition[ settings.controlPosition.toUpperCase() + '_TOP' ]
 		}
@@ -114,12 +85,16 @@ function initializeGmap( mapId, mapIndex ) {
 
 	map = new google.maps.Map( document.getElementById( mapId ), mapOptions );
 
+	// Do we need to disable the dragging of the map?
+	maybeDisableMapDrag( map );
+
 	// Check if we need to apply a map style.
 	maybeApplyMapStyle( settings.mapStyle );
 	
 	if ( ( typeof window[ "wpslMap_" + mapIndex ] !== "undefined" ) && ( typeof window[ "wpslMap_" + mapIndex ].locations !== "undefined" ) ) {
-		bounds	= new google.maps.LatLngBounds(),
-		mapData = window[ "wpslMap_" + mapIndex ].locations;
+		bounds		  = new google.maps.LatLngBounds(),
+		mapData       = window[ "wpslMap_" + mapIndex ].locations,
+		locationCount = mapData.length;
 
 		// Loop over the map data, create the infowindow object and add each marker.
 		$.each( mapData, function( index ) {
@@ -128,31 +103,18 @@ function initializeGmap( mapId, mapIndex ) {
 			bounds.extend( latLng );
 		});
 
-		// If we have more then one location on the map, then make sure to not zoom to far.
-		if ( mapData.length > 1 ) {
-            // Make sure we don't zoom to far when fitBounds runs.
-            attachBoundsChangedListener( map, maxZoom );
+		// Make all the markers fit on the map.
+		map.fitBounds( bounds );
 
-            // Make all the markers fit on the map.
-            map.fitBounds( bounds );
-		}
-
-        /*
-         * If we need to apply the fix for the map showing up grey because
-         * it's used in a tabbed nav multiple times, then collect the active maps.
-         *
-         * See the fixGreyTabMap function.
-         */
-        if ( _.isArray( wpslSettings.mapTabAnchor ) ) {
-            mapDetails = {
-                map: map,
-                bounds: bounds,
-				maxZoom: maxZoom
-            };
-
-            mapsArray.push( mapDetails );
-		}
-    }
+		// Make sure we don't zoom to far.
+		google.maps.event.addListenerOnce( map, "bounds_changed", ( function( currentMap ) {
+			return function() {
+				if ( currentMap.getZoom() > maxZoom ) {
+					currentMap.setZoom( maxZoom );
+				}
+			};
+		}( map ) ) );
+	}
 
 	// Only run this part if the store locator exist and we don't just have a basic map.
 	if ( $( "#wpsl-gmap" ).length ) {
@@ -182,7 +144,7 @@ function initializeGmap( mapId, mapIndex ) {
 
 		// Check if we need to autolocate the user, or autoload the store locations.
 		if ( !$( ".wpsl-search" ).hasClass( "wpsl-widget" ) ) {
-            if ( wpslSettings.autoLocate == 1 ) {
+			if ( wpslSettings.autoLocate == 1 ) {
 				checkGeolocation( settings.startLatLng, infoWindow );
 			} else if ( wpslSettings.autoLoad == 1 ) {
 				showStores( settings.startLatLng, infoWindow );
@@ -274,8 +236,7 @@ function getMapSettings( mapIndex ) {
 			mapStyle: wpslSettings.mapStyle,
 			streetView: wpslSettings.streetView,
 			scrollWheel: wpslSettings.scrollWheel,
-			controlPosition: wpslSettings.controlPosition,
-            gestureHandling: wpslSettings.gestureHandling
+			controlPosition: wpslSettings.controlPosition
 		};	
 
 	// If there are settings that are set through the shortcode, then we use them instead of the default ones.
@@ -372,6 +333,30 @@ function newInfoWindow() {
 }
 
 /**
+ * Check if we need to disable dragging on the map.
+ * 
+ * Disabling dragging fixes the problem on mobile devices where 
+ * users are scrolling down a page, but can't get past the map
+ * because the map itself is being dragged instead of the page.
+ * 
+ * @since  2.1.0
+ * @param  {object} map The map object.
+ * @return {void}
+ */
+function maybeDisableMapDrag( map ) {
+	var disableRes = parseInt( wpslSettings.draggable.disableRes ), 
+		mapOption  = {
+			draggable: Boolean( wpslSettings.draggable.enabled )
+		};
+
+	if ( disableRes !== "NaN" && mapOption.draggable ) {
+		mapOption.draggable = $( document ).width() > disableRes ? true : false;
+	}
+
+	map.setOptions( mapOption );
+}
+
+/**
  * Get the required marker settings.
  * 
  * @since  2.1.0
@@ -382,13 +367,9 @@ function getMarkerSettings() {
 		markerProps = wpslSettings.markerIconProps,
 		settings	= {};
 
-	// Use the correct marker path.
+	// If no custom marker path is provided, then we stick with the default one.
 	if ( typeof markerProps.url !== "undefined" ) {
-        settings.url = markerProps.url;
-    } else if ( typeof markerProps.categoryMarkerUrl !== "undefined" ) {
-        settings.categoryMarkerUrl = markerProps.categoryMarkerUrl;
-    } else if ( typeof markerProps.alternateMarkerUrl !== "undefined" ) {
-        settings.alternateMarkerUrl = markerProps.alternateMarkerUrl;
+		settings.url = markerProps.url;
 	} else {
 		settings.url = wpslSettings.url + "img/markers/";
 	}
@@ -491,7 +472,7 @@ function checkGeolocation( startLatLng, infoWindow ) {
 	if ( navigator.geolocation ) {
 		var geolocationInProgress, locationTimeout,
 			keepStartMarker = false,
-			timeout			= Number( wpslSettings.geoLocationTimeout );
+			timeout			= Number( wpslSettings.geoLocationTimout );	
 	
 		// Make the direction icon flash every 600ms to indicate the geolocation attempt is in progress.
 		geolocationInProgress = setInterval( function() {
@@ -500,13 +481,13 @@ function checkGeolocation( startLatLng, infoWindow ) {
 
 		/* 
 		 * If the user doesn't approve the geolocation request within the value set in 
-		 * wpslSettings.geoLocationTimeout, then the default map is loaded.
+		 * wpslSettings.geoLocationTimout, then the default map is loaded. 
 		 * 
 		 * You can increase the timeout value with the wpsl_geolocation_timeout filter. 
 		 */
 		locationTimeout = setTimeout( function() {
 			geolocationFinished( geolocationInProgress );
-			showStores( startLatLng, infoWindow );
+			showStores( startLatLng, infoWindow ); 
 		}, timeout );
 
 		navigator.geolocation.getCurrentPosition( function( position ) {
@@ -609,11 +590,9 @@ function handleGeolocationQuery( startLatLng, position, resetMap, infoWindow ) {
 		 * Store the latlng from the geolocation for when the user hits "reset" again 
 		 * without having to ask for permission again.
 		 */
-        userGeolocation = {
-            position: position,
-			newRequest: true
-		};
+		geolocationLatlng = position;
 
+		reverseGeocode( latLng ); // Set the zipcode that belongs to the latlng in the input field
 		map.setCenter( latLng );
 		addMarker( latLng, 0, '', true, infoWindow ); // This marker is the 'start location' marker. With a storeId of 0, no name and is draggable
 		findStoreLocations( latLng, resetMap, autoLoad, infoWindow );
@@ -770,7 +749,7 @@ function resetMapBtn( startLatLng, infoWindow ) {
 			resetDropdowns();
 
 			if ( wpslSettings.autoLocate == 1 ) {
-				handleGeolocationQuery( startLatLng, userGeolocation.position, resetMap, infoWindow );
+				handleGeolocationQuery( startLatLng, geolocationLatlng, resetMap, infoWindow );
 			} else {
 				showStores( startLatLng, infoWindow );
 			}
@@ -879,7 +858,7 @@ $( "#wpsl-result-list" ).on( "click", ".wpsl-back", function() {
 	}
 
 	// If marker clusters are enabled, restore them.
-	if ( markerClusterer ) {
+	if ( markerClusterer ) {		
 		checkMarkerClusters();			
 	}
 
@@ -1008,9 +987,9 @@ function letsBounce( storeId, status ) {
  * @returns {void}
  */
 function calcRoute( start, end ) {
-    var legs, len, step, index, direction, i, j,
-		distanceUnit, directionOffset, request,
-		directionStops = "";
+    var legs, len, step, index, direction, i, j, distanceUnit, directionOffset,
+		directionStops = "",    
+		request = {};
 		
 	if ( wpslSettings.distanceUnit == "km" ) {
 		distanceUnit = 'METRIC';
@@ -1021,7 +1000,7 @@ function calcRoute( start, end ) {
 	request = {
 		origin: start,
 		destination: end,
-		travelMode: wpslSettings.directionsTravelMode,
+		travelMode: google.maps.DirectionsTravelMode.DRIVING,
 		unitSystem: google.maps.UnitSystem[ distanceUnit ] 
 	};
 
@@ -1096,11 +1075,6 @@ function codeAddress( infoWindow ) {
 
     geocoder.geocode( request, function( response, status ) {
 		if ( status == google.maps.GeocoderStatus.OK ) {
-
-			if ( statistics.enabled ) {
-                statistics.address_components = response[0].address_components;
-			}
-
 			latLng = response[0].geometry.location;
 
 			prepareStoreSearch( latLng, infoWindow );
@@ -1114,7 +1088,7 @@ function codeAddress( infoWindow ) {
  * Prepare a new location search.
  * 
  * @since	2.2.0
- * @param	{object} latLng 	The coordinates
+ * @param	{object} latLng
  * @param	{object} infoWindow The infoWindow object.
  * @returns {void}
  */
@@ -1125,54 +1099,26 @@ function prepareStoreSearch( latLng, infoWindow ) {
 	addMarker( latLng, 0, '', true, infoWindow );
 
 	// Try to find stores that match the radius, location criteria.
-	findStoreLocations( latLng, resetMap, autoLoad, infoWindow );
+	findStoreLocations( latLng, resetMap, autoLoad, infoWindow );	
 }
 
 /**
  * Geocode the user input and set the returned zipcode in the input field.
- *
+ * 
  * @since	1.0.0
  * @param	{object} latLng The coordinates of the location that should be reverse geocoded
- * @returns {object} response The address components if the stats add-on is active.
+ * @returns {void}
  */
-function reverseGeocode( latLng, callback ) {
-    var lat = latLng.lat().toFixed( 5 ),
-		lng = latLng.lng().toFixed( 5 );
+function reverseGeocode( latLng ) {
+    var zipCode;
 
-    latLng.lat = function() {
-        return parseFloat( lat );
-    };
-
-    latLng.lng = function() {
-        return parseFloat( lng );
-    };
-    
     geocoder.geocode( {'latLng': latLng}, function( response, status ) {
 		if ( status == google.maps.GeocoderStatus.OK ) {
+			zipCode = filterApiResponse( response );	
 
-        	if ( wpslSettings.autoLocate == 1 && userGeolocation.newRequest ) {
-                var zipCode = filterApiResponse( response );
-
-				if ( zipCode !== "" ) {
-					$( "#wpsl-search-input" ).val( zipCode );
-				}
-
-                /*
-                 * Prevent the zip from being placed in the input field
-                 * again after the users location is determined.
-                 */
-                userGeolocation.newRequest = false;
+			if ( zipCode !== "" ) {
+				$( "#wpsl-search-input" ).val( zipCode );
 			}
-
-            if ( wpslSettings.directionRedirect ) {
-                startAddress = response[0].formatted_address;
-            }
-
-            if ( statistics.enabled ) {
-                statistics.address_components = response[0].address_components;
-            }
-
-            callback();
 		} else {
 			geocodeErrors( status );
 		}
@@ -1181,7 +1127,7 @@ function reverseGeocode( latLng, callback ) {
 
 /**
  * Filter out the zipcode from the response.
- *
+ * 
  * @since	1.0.0
  * @param	{object} response The complete Google API response
  * @returns {string} zipcode  The zipcode
@@ -1191,11 +1137,11 @@ function filterApiResponse( response ) {
 		addressLength = response[0].address_components.length;
 
     // Loop over the API response.
-    for ( i = 0; i < addressLength; i++ ) {
+    for ( i = 0; i < addressLength; i++ ){
 		responseType = response[0].address_components[i].types;
 
 		// filter out the postal code.
-        if ( ( /^postal_code$/.test( responseType ) ) || ( /^postal_code,postal_code_prefix$/.test( responseType ) ) ) {
+		if ( ( /^postal_code$/.test( responseType ) ) || ( /^postal_code_prefix,postal_code$/.test( responseType ) ) ) {
 			zipcode = response[0].address_components[i].long_name;
 		}
     }
@@ -1210,7 +1156,7 @@ function filterApiResponse( response ) {
  * we first need to geocode the start latlng into a formatted address.
  * 
  * @since	1.0.0
- * @param	{object}  startLatLng The coordinates
+ * @param	{object}  startLatLng The latlng used as the starting point
  * @param	{boolean} resetMap    Whether we should reset the map or not
  * @param	{string}  autoLoad    Check if we need to autoload all the stores
  * @param	{object}  infoWindow  The infoWindow object
@@ -1218,13 +1164,33 @@ function filterApiResponse( response ) {
  */
 function findStoreLocations( startLatLng, resetMap, autoLoad, infoWindow ) {
 	
-	if ( wpslSettings.directionRedirect == 1 || statistics.enabled ) {
-        reverseGeocode( startLatLng, function() {
+	// Check if we need to open a new window and show the route on the Google Maps site itself.
+	if ( wpslSettings.directionRedirect == 1 ) {
+		findFormattedAddress( startLatLng, function() {
 			makeAjaxRequest( startLatLng, resetMap, autoLoad, infoWindow );
 		});
 	} else {
 		makeAjaxRequest( startLatLng, resetMap, autoLoad, infoWindow );
 	}
+}
+
+/**
+ * Convert the latlng into a formatted address.
+ * 
+ * @since	1.0.0
+ * @param	{object} latLng The latlng to geocode
+ * @param	{callback} callback
+ * @returns {void}
+ */
+function findFormattedAddress( latLng, callback ) {
+	geocoder.geocode( {'latLng': latLng}, function( response, status ) {
+		if ( status == google.maps.GeocoderStatus.OK ) {
+			startAddress = response[0].formatted_address;
+			callback();
+		} else {
+			geocodeErrors( status );
+		}
+	});
 }
 
 /**
@@ -1238,7 +1204,8 @@ function findStoreLocations( startLatLng, resetMap, autoLoad, infoWindow ) {
  * @returns {void}
  */
 function makeAjaxRequest( startLatLng, resetMap, autoLoad, infoWindow ) {
-	var latLng, noResultsMsg, ajaxData,
+	var latLng, noResultsMsg,
+		ajaxData   = {},
 		storeData  = "",
 		draggable  = false,
 		template   = $( "#wpsl-listing-template" ).html(),
@@ -1249,15 +1216,13 @@ function makeAjaxRequest( startLatLng, resetMap, autoLoad, infoWindow ) {
 
 	// Add the preloader.
 	$storeList.empty().append( "<li class='wpsl-preloader'><img src='" + preloader + "'/>" + wpslLabels.preloader + "</li>" );
-
-    $( "#wpsl-wrap" ).removeClass( "wpsl-no-results" );
 		
 	$.get( wpslSettings.ajaxurl, ajaxData, function( response ) {
 
 	    // Remove the preloaders and no results msg.
 	    $( ".wpsl-preloader, .no-results" ).remove();
 
-		if ( response.length > 0 && typeof response.addon == "undefined" ) {
+		if ( response.length > 0 ) {
 
 			// Loop over the returned locations.
 			$.each( response, function( index ) {
@@ -1297,22 +1262,12 @@ function makeAjaxRequest( startLatLng, resetMap, autoLoad, infoWindow ) {
 			addMarker( startLatLng, 0, '', true, infoWindow );
 			
 			noResultsMsg = getNoResultsMsg();
-
-			$( "#wpsl-wrap" ).addClass( "wpsl-no-results" );
 			
-			$storeList.html( "<li class='wpsl-no-results-msg'>" + noResultsMsg + "</li>" );
+			$storeList.html( "<li class='no-results'>" + noResultsMsg + "</li>" );
 		}
 		
-		/*
-		 * Do we need to adjust the zoom level so that all the markers fit in the viewport,
-		 * or just center the map on the start marker.
-		 */
-        if ( wpslSettings.runFitBounds == 1 ) {
-            fitBounds();
-		} else {
-            map.setZoom( Number( wpslSettings.zoomLevel ) );
-            map.setCenter( markersArray[0].position );
-        }
+		// Make sure everything fits on the screen.
+		fitBounds();
 		
 		/* 
 		 * Store the default zoom and latlng values the first time 
@@ -1364,8 +1319,7 @@ function makeAjaxRequest( startLatLng, resetMap, autoLoad, infoWindow ) {
  * @returns {object}  ajaxData	  The collected data.
  */
 function collectAjaxData( startLatLng, resetMap, autoLoad ) {
-	var maxResult, radius, customDropdownName, customDropdownValue,
-        customCheckboxName,
+	var maxResult, radius, customName, customValue,
 		categoryId	   = "",
 		isMobile	   = $( "#wpsl-wrap" ).hasClass( "wpsl-mobile" ),
 		defaultFilters = $( "#wpsl-wrap" ).hasClass( "wpsl-default-filters" ),
@@ -1380,8 +1334,8 @@ function collectAjaxData( startLatLng, resetMap, autoLoad ) {
 	 * Otherwise we first make sure the filter val is valid before including the radius / max_results param
 	 */
 	if ( resetMap ) {
-		ajaxData.max_results   = wpslSettings.maxResults;
-		ajaxData.search_radius = wpslSettings.searchRadius;
+		ajaxData.max_results = wpslSettings.maxResults;
+		ajaxData.radius	     = wpslSettings.searchRadius;
 	} else {
 		if ( isMobile || defaultFilters ) {
 			maxResult = parseInt( $( "#wpsl-results .wpsl-dropdown" ).val() );
@@ -1391,7 +1345,7 @@ function collectAjaxData( startLatLng, resetMap, autoLoad ) {
 			radius    = parseInt( $( "#wpsl-radius .wpsl-selected-item" ).attr( "data-value" ) );
 		}
 		
-		// If the max results or radius filter values are NaN, then we use the default value.
+		// If the max resuls or radius filter values are NaN, then we use the default value.
 		if ( isNaN( maxResult ) ) {
 			ajaxData.max_results = wpslSettings.maxResults;
 		} else {
@@ -1399,9 +1353,9 @@ function collectAjaxData( startLatLng, resetMap, autoLoad ) {
 		}
 		
 		if ( isNaN( radius ) ) {
-			ajaxData.search_radius = wpslSettings.searchRadius;
+			ajaxData.radius = wpslSettings.searchRadius;
 		} else {
-			ajaxData.search_radius = radius;
+			ajaxData.radius = radius;
 		}
 		
 		/* 
@@ -1429,33 +1383,22 @@ function collectAjaxData( startLatLng, resetMap, autoLoad ) {
 		// Include values from custom dropdowns.
 		if ( $( ".wpsl-custom-dropdown" ).length > 0 ) {
 			$( ".wpsl-custom-dropdown" ).each( function( index ) {
-				customDropdownName  = '';
-				customDropdownValue = '';
+				customName  = '';
+				customValue = '';
 
 				if ( isMobile || defaultFilters ) {
-					customDropdownName  = $( this ).attr( "name" );
-					customDropdownValue = $( this ).val();
+					customName  = $( this ).attr( "name" );
+					customValue = $( this ).val();
 				} else {
-					customDropdownName  = $( this ).attr( "name" );
-					customDropdownValue = $( this ).next( ".wpsl-selected-item" ).attr( "data-value" );
+					customName  = $( this ).attr( "name" );
+					customValue = $( this ).next( ".wpsl-selected-item" ).attr( "data-value" );
 				}
 
-				if ( customDropdownName && customDropdownValue ) {
-					ajaxData[customDropdownName] = customDropdownValue;
+				if ( customName && customValue ) {
+					ajaxData[customName] = customValue;
 				}
 			});	
 		}
-
-		// Include values from custom checkboxes
-        if ( $( ".wpsl-custom-checkboxes" ).length > 0 ) {
-            $( ".wpsl-custom-checkboxes" ).each( function( index ) {
-				customCheckboxName = $( this ).attr( "data-name" );
-
-                if ( customCheckboxName ) {
-                    ajaxData[customCheckboxName] = getCustomCheckboxValue( customCheckboxName );
-                }
-			});
-        }
 	}
 
    /*
@@ -1463,14 +1406,14 @@ function collectAjaxData( startLatLng, resetMap, autoLoad ) {
 	* is based on a geolocation attempt before including the autoload param.
 	* 
 	* Because if both the geolocation and autoload options are enabled, 
-	* and the geolocation attempt was successful, then we need to to include
+	* and the geolocation attempt was successfull, then we need to to include 
 	* the skip_cache param. 
 	* 
 	* This makes sure the results don't come from an older transient based on the 
 	* start location from the settings page, instead of the users actual location. 
 	*/
     if ( autoLoad == 1 ) {
-		if ( typeof userGeolocation.position !== "undefined" ) {
+		if ( typeof geolocationLatlng !== "undefined" ) {
 			ajaxData.skip_cache = 1;
 		} else {
 			ajaxData.autoload = 1;
@@ -1486,33 +1429,11 @@ function collectAjaxData( startLatLng, resetMap, autoLoad ) {
 	}
 	
 	// If the collection of statistics is enabled, then we include the searched value.
-	if ( statistics.enabled && autoLoad == 0 ) {
+	if ( typeof wpslSettings.collectStatistics !== "undefined" && autoLoad == 0 ) {
 		ajaxData.search = $( "#wpsl-search-input" ).val();
-        ajaxData.statistics = statistics.address_components;
-    }
+	}
 	
 	return ajaxData;
-}
-
-/**
- * Get custom checkbox values by data-name group.
- *
- * If multiple selection are made, then the returned
- * values are comma separated
- *
- * @since  2.2.8
- * @param  {string} customCheckboxName The data-name value of the custom checkbox
- * @return {string} customValue		   The collected checkbox values separated by a comma
- */
-function getCustomCheckboxValue( customCheckboxName ) {
-	var dataName    = $( "[data-name=" + customCheckboxName + "]" ),
-		customValue = [];
-
-	$( dataName ).find( "input:checked" ).each( function( index ) {
-        customValue.push( $( this ).val() );
-	});
-
-	return customValue.join();
 }
 
 /**
@@ -1562,8 +1483,7 @@ function getCheckboxIds() {
  */
 function checkMarkerClusters() {
 	if ( wpslSettings.markerClusters == 1 ) {
-		var markers, markersArrayNoStart,
-			clusterZoom = Number( wpslSettings.clusterZoom ),
+		var clusterZoom = Number( wpslSettings.clusterZoom ),
 			clusterSize = Number( wpslSettings.clusterSize );
 
 		if ( isNaN( clusterZoom ) ) {
@@ -1574,18 +1494,7 @@ function checkMarkerClusters() {
 			clusterSize = "";
 		}
 
-        /*
-         * Remove the start location marker from the cluster so the location
-         * count represents the actual returned locations, and not +1 for the start location.
-         */
-		if ( typeof wpslSettings.excludeStartFromCluster !== "undefined" && wpslSettings.excludeStartFromCluster == 1 ) {
-            markersArrayNoStart = markersArray.slice( 0 );
-            markersArrayNoStart.splice( 0,1 );
-        }
-
-        markers = ( typeof markersArrayNoStart === "undefined" ) ? markersArray : markersArrayNoStart;
-
-        markerClusterer = new MarkerClusterer( map, markers, {
+		markerClusterer = new MarkerClusterer( map, markersArray, {
 			gridSize: clusterSize,
 			maxZoom: clusterZoom
 		});
@@ -1607,16 +1516,12 @@ function addMarker( latLng, storeId, infoWindowData, draggable, infoWindow ) {
 	var url, mapIcon, marker,
 		keepStartMarker = true;
 
-    if ( storeId === 0 ) {
-        infoWindowData = {
-            store: wpslLabels.startPoint
-        };
+	if ( storeId === 0 ) {
+		infoWindowData = {
+			store: wpslLabels.startPoint
+		};
 
-        url = markerSettings.url + wpslSettings.startMarker;
-    } else if ( typeof infoWindowData.alternateMarkerUrl !== "undefined" && infoWindowData.alternateMarkerUrl ) {
-		url = infoWindowData.alternateMarkerUrl;
-	} else if ( typeof infoWindowData.categoryMarkerUrl !== "undefined" && infoWindowData.categoryMarkerUrl ) {
-		url = infoWindowData.categoryMarkerUrl;
+		url = markerSettings.url + wpslSettings.startMarker;
 	} else {
 		url = markerSettings.url + wpslSettings.storeMarker;
 	}
@@ -1649,7 +1554,7 @@ function addMarker( latLng, storeId, infoWindowData, draggable, infoWindow ) {
 
 				// Check if streetview is available at the clicked location.
 				if ( typeof wpslSettings.markerStreetView !== "undefined" && wpslSettings.markerStreetView == 1 ) {
-					checkStreetViewStatus( latLng, function() {
+					checkStreetViewStatus( latLng, function() {	
 						setInfoWindowContent( marker, createInfoWindowHtml( infoWindowData ), infoWindow, currentMap );
 					});
 				} else {
@@ -1908,7 +1813,6 @@ function checkStreetViewStatus( latLng, callback ) {
  * 
  * @link	 http://underscorejs.org/#template
  * @requires underscore.js
- * @todo move it to another JS file to make it accessible for add-ons?
  * @since	 2.0.0
  */
 var templateHelpers = {
@@ -1920,7 +1824,7 @@ var templateHelpers = {
 	 * @returns {string} phoneNumber Either just the plain number, or with a link wrapped around it with tel:
 	 */
 	formatPhoneNumber: function( phoneNumber ) {
-		if ( ( wpslSettings.phoneUrl == 1 ) && ( checkMobileUserAgent() ) || wpslSettings.clickableDetails == 1 ) {
+		if ( ( wpslSettings.phoneUrl == 1 ) && ( checkMobileUserAgent() ) ) {
 			phoneNumber = "<a href='tel:" + templateHelpers.formatClickablePhoneNumber( phoneNumber ) + "'>" + phoneNumber + "</a>";
 		}
 
@@ -1940,20 +1844,6 @@ var templateHelpers = {
 		}
 
 		return phoneNumber.replace( /(-| |\(|\)|\.|)/g, "" );	
-	},
-    /**
-	 * Check if we need to make the email address clickable.
-	 *
-	 * @since 2.2.13
-     * @param   {string} email The email address
-	 * @returns {string} email Either the normal email address, or the clickable version.
-     */
-	formatEmail: function( email ) {
-        if ( wpslSettings.clickableDetails == 1 ) {
-            email = "<a href='mailto:" + email + "'>" + email + "</a>";
-        }
-
-		return email;
 	},
 	/**
 	 * Create the html for the info window action.
@@ -1993,7 +1883,7 @@ var templateHelpers = {
 		var directionUrl, destinationAddress, zip,
 			url = {};
 
-		if ( wpslSettings.directionRedirect == 1 ) {
+		if ( wpslSettings.directionRedirect == 1 ) {	
 
 			// If we somehow failed to determine the start address, just set it to empty.
 			if ( typeof startAddress === "undefined" ) {
@@ -2015,8 +1905,8 @@ var templateHelpers = {
 				}
 
 				destinationAddress = this.address + ", " + this.city + ", " + zip + this.country;
-
-				url.src = "https://www.google.com/maps/dir/?api=1&origin=" + templateHelpers.rfc3986EncodeURIComponent( startAddress ) + "&destination=" + templateHelpers.rfc3986EncodeURIComponent( destinationAddress ) + "&travelmode=" + wpslSettings.directionsTravelMode.toLowerCase() + "";
+				
+				url.src = "https://maps.google.com/maps?saddr=" + templateHelpers.rfc3986EncodeURIComponent( startAddress ) + "&daddr=" + templateHelpers.rfc3986EncodeURIComponent( destinationAddress ) + "";
 			}
 		} else {
 			url = {
@@ -2076,7 +1966,11 @@ function fitBounds() {
 		bounds  = new google.maps.LatLngBounds();
 		
     // Make sure we don't zoom to far.
-    attachBoundsChangedListener( map, maxZoom );
+    google.maps.event.addListenerOnce( map, "bounds_changed", function( event ) {
+		if ( this.getZoom() > maxZoom ) {
+			this.setZoom( maxZoom );
+		}
+    });
 
     for ( i = 0, markerLen = markersArray.length; i < markerLen; i++ ) {
 		bounds.extend ( markersArray[i].position );
@@ -2184,7 +2078,7 @@ $( "#wpsl-stores" ).on( "click", ".wpsl-store-details", function() {
 			if ( markersArray[i].storeId == storeId ) {
 				google.maps.event.trigger( markersArray[i], "click" );
 			}
-		}
+		}	
 	} else {
 		
 		// Check if we should set the 'more info' item to active or not.
@@ -2313,8 +2207,48 @@ function closeAllDropdowns() {
 }
 
 /**
+ * This code prevents the map from showing a large grey area if 
+ * the store locator is placed in a tab, and that tab is actived.
+ * 
+ * The default map anchor is set to 'wpsl-map-tab', but you can
+ * change this with the 'wpsl_map_tab_anchor' filter.
+ * 
+ * Note: If the "Attempt to auto-locate the user" option is enabled,
+ * and the user quickly switches to the store locator tab, before the
+ * Geolocation timeout is reached, then the map is sometimes centered in the ocean. 
+ * 
+ * I haven't really figured out why this happens. The only option to fix this
+ * is to simply disable the "Attempt to auto-locate the user" option if 
+ * you use the store locator in a tab.
+ * 
+ * @link  http://stackoverflow.com/questions/9458215/google-maps-not-working-in-jquery-tabs
+ * @since 2.0.0
+ */
+if ( $( "a[href='#" + wpslSettings.mapTabAnchor + "']" ).length ) {
+	var mapZoom, mapCenter,
+		returnBool = Number( wpslSettings.mapTabAnchorReturn ) ? true : false,
+		$wpsl_tab  = $( "a[href='#" + wpslSettings.mapTabAnchor + "']" );
+
+	$wpsl_tab.on( "click", function() {
+		setTimeout( function() {
+			mapZoom   = map.getZoom();
+			mapCenter = map.getCenter();
+
+			google.maps.event.trigger( map, "resize" );
+
+			map.setZoom( mapZoom );
+			map.setCenter( mapCenter );
+
+			fitBounds();
+		}, 50 );
+
+		return returnBool;
+	});
+}
+
+/**
  * Check if the user submitted a search through a search widget.
- *
+ *  
  * @since	2.1.0
  * @returns {void}
  */
@@ -2323,120 +2257,6 @@ function checkWidgetSubmit() {
 		$( "#wpsl-search-btn" ).trigger( "click" );
 		$( ".wpsl-search" ).removeClass( "wpsl-widget" );
 	}
-}
-
-/**
- * Check if we need to run the code to prevent Google Maps
- * from showing up grey when placed inside one or more tabs.
- *
- * @since 2.2.10
- * @return {void}
- */
-function maybeApplyTabFix() {
-	var mapNumber, len;
-
-	if ( _.isArray( wpslSettings.mapTabAnchor ) ) {
-		for ( mapNumber = 0, len = mapsArray.length; mapNumber < len; mapNumber++ ) {
-			fixGreyTabMap( mapsArray[mapNumber], wpslSettings.mapTabAnchor[mapNumber], mapNumber );
-		}
-	} else if ( $( "a[href='#" + wpslSettings.mapTabAnchor + "']" ).length ) {
-		fixGreyTabMap( map, wpslSettings.mapTabAnchor );
-	}
-}
-
-/**
- * This code prevents the map from showing a large grey area if
- * the store locator is placed in a tab, and that tab is actived.
- *
- * The default map anchor is set to 'wpsl-map-tab', but you can
- * change this with the 'wpsl_map_tab_anchor' filter.
- *
- * Note: If the "Attempt to auto-locate the user" option is enabled,
- * and the user quickly switches to the store locator tab, before the
- * Geolocation timeout is reached, then the map is sometimes centered in the ocean.
- *
- * I haven't really figured out why this happens. The only option to fix this
- * is to simply disable the "Attempt to auto-locate the user" option if
- * you use the store locator in a tab.
- *
- * @since   2.2.10
- * @param   {object} currentMap	  The map object from the current map
- * @param   {string} mapTabAnchor The anchor used in the tab that holds the map
- * @param 	(int) 	 mapNumber    Map number
- * @link    http://stackoverflow.com/questions/9458215/google-maps-not-working-in-jquery-tabs
- * @returns {void}
- */
-function fixGreyTabMap( currentMap, mapTabAnchor, mapNumber ) {
-    var mapZoom, mapCenter, maxZoom, bounds, tabMap,
-        returnBool = Number( wpslSettings.mapTabAnchorReturn ) ? true : false,
-		$wpsl_tab  = $( "a[href='#" + mapTabAnchor + "']" );
-
-    if ( typeof currentMap.maxZoom !== "undefined" ) {
-        maxZoom = currentMap.maxZoom;
-	} else {
-        maxZoom = Number( wpslSettings.autoZoomLevel );
-	}
-
-	/*
-	 * We need to do this to prevent the map from flashing if
-	 * there's only a single marker on the first click on the tab.
-	 */
-	if ( typeof mapNumber !== "undefined" && mapNumber == 0 ) {
-        $wpsl_tab.addClass( "wpsl-fitbounds" );
-	}
-
-	$wpsl_tab.on( "click", function() {
-		setTimeout( function() {
-            if ( typeof currentMap.map !== "undefined" ) {
-                bounds = currentMap.bounds;
-                tabMap = currentMap.map;
-            } else {
-            	tabMap = currentMap;
-			}
-
-            mapZoom   = tabMap.getZoom();
-            mapCenter = tabMap.getCenter();
-
-			google.maps.event.trigger( tabMap, "resize" );
-
-			if ( !$wpsl_tab.hasClass( "wpsl-fitbounds" ) ) {
-
-                //Make sure fitBounds doesn't zoom past the max zoom level.
-                attachBoundsChangedListener( tabMap, maxZoom );
-
-                tabMap.setZoom( mapZoom );
-				tabMap.setCenter( mapCenter );
-
-                if ( typeof bounds !== "undefined" ) {
-                    tabMap.fitBounds( bounds );
-                } else {
-                	fitBounds();
-				}
-
-				$wpsl_tab.addClass( "wpsl-fitbounds" );
-            }
-        }, 50 );
-
-        return returnBool;
-    });
-}
-
-/**
- * Add the bounds_changed event listener to the map object
- * to make sure we don't zoom past the max zoom level.
- *
- * @since 2.2.10
- * @param object The map object to attach the event listener to
- * @returns {void}
- */
-function attachBoundsChangedListener( map, maxZoom ) {
-    google.maps.event.addListenerOnce( map, "bounds_changed", function() {
-        google.maps.event.addListenerOnce( map, "idle", function() {
-            if ( this.getZoom() > maxZoom ) {
-                this.setZoom( maxZoom );
-            }
-        });
-    });
 }
 
 });
