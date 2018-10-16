@@ -402,6 +402,18 @@ function wpsl_check_upgrade() {
         update_option( 'wpsl_settings', $wpsl_settings ); 
     }
 
+    if ( version_compare( $current_version, '2.2.9', '<' ) ) {
+        $wpsl_settings['run_fitbounds'] = 1;
+
+        update_option( 'wpsl_settings', $wpsl_settings );
+    }
+
+    if ( version_compare( $current_version, '2.2.13', '<' ) ) {
+        $wpsl_settings['clickable_contact_details'] = 0;
+
+        update_option( 'wpsl_settings', $wpsl_settings );
+    }
+
     update_option( 'wpsl_version', WPSL_VERSION_NUM );
 }
 

@@ -4,7 +4,7 @@ Plugin Name: WP Store Locator
 Description: An easy to use location management system that enables users to search for nearby physical stores
 Author: Tijmen Smit
 Author URI: https://wpstorelocator.co/
-Version: 2.2.4
+Version: 2.2.17
 Text Domain: wpsl
 Domain Path: /languages/
 License: GPL v3
@@ -42,9 +42,12 @@ if ( !class_exists( 'WP_Store_locator' ) ) {
             $this->define_constants();
             $this->includes();
             $this->plugin_settings();
-            
+
+            // Load classes
             $this->post_types = new WPSL_Post_Types();
             $this->i18n       = new WPSL_i18n();
+            $this->frontend   = new WPSL_Frontend();
+            $this->templates  = new WPSL_Templates();
                         
             register_activation_hook( __FILE__, array( $this, 'install' ) );
         }
@@ -58,7 +61,7 @@ if ( !class_exists( 'WP_Store_locator' ) ) {
         public function define_constants() {
 
             if ( !defined( 'WPSL_VERSION_NUM' ) )
-                define( 'WPSL_VERSION_NUM', '2.2.4' );
+                define( 'WPSL_VERSION_NUM', '2.2.17' );
 
             if ( !defined( 'WPSL_URL' ) )
                 define( 'WPSL_URL', plugin_dir_url( __FILE__ ) );
@@ -77,13 +80,14 @@ if ( !class_exists( 'WP_Store_locator' ) ) {
          * @return void
          */
         public function includes() {
-            
+
             require_once( WPSL_PLUGIN_DIR . 'inc/wpsl-functions.php' );
+            require_once( WPSL_PLUGIN_DIR . 'inc/class-templates.php' );
             require_once( WPSL_PLUGIN_DIR . 'inc/class-post-types.php' );
             require_once( WPSL_PLUGIN_DIR . 'inc/class-i18n.php' );
             require_once( WPSL_PLUGIN_DIR . 'frontend/class-frontend.php' );
             
-            if ( is_admin() ) {
+            if ( is_admin() || defined( 'WP_CLI' ) && WP_CLI ) {
                 require_once( WPSL_PLUGIN_DIR . 'admin/roles.php' );
                 require_once( WPSL_PLUGIN_DIR . 'admin/class-admin.php' );
             }
@@ -116,5 +120,4 @@ if ( !class_exists( 'WP_Store_locator' ) ) {
 	}
 	
 	$GLOBALS['wpsl'] = new WP_Store_locator();
-
 }
