@@ -343,7 +343,7 @@ in street view mode doesn't cover the control area.
 }
 
 #wpsl-wrap #wpsl-result-list ul li {
-    list-style: none !important;
+    list-style: disc;
 }
 
 #wpsl-wrap #wpsl-result-list ol li {

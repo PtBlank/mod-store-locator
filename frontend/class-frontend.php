@@ -480,7 +480,7 @@ if ( !class_exists( 'WPSL_Frontend' ) ) {
          */
         public function get_store_thumb_size() {
             
-            $size = apply_filters( 'wpsl_thumb_size', array( 45, 45 ) );
+            $size = apply_filters( 'wpsl_thumb_size', array( 300, 300 ) );
             
             return $size;
         }
@@ -1205,7 +1205,7 @@ if ( !class_exists( 'WPSL_Frontend' ) ) {
 			$css = '<style>' . "\r\n";
 
             if ( isset( $thumb_size[0] ) && is_numeric( $thumb_size[0] ) && isset( $thumb_size[1] ) && is_numeric( $thumb_size[1] ) ) {
-                $css .= "\t" . "#wpsl-stores .wpsl-store-thumb {height:" . esc_attr( $thumb_size[0] ) . "px !important; width:" . esc_attr( $thumb_size[1] ) . "px !important;}" . "\r\n";
+                $css .= "\t" . "#wpsl-stores .wpsl-store-thumb {height:" . esc_attr( $thumb_size[0] ) . "px; width:" . esc_attr( $thumb_size[1] ) . "px;}" . "\r\n";
             }
 
             if ( $wpsl_settings['template_id'] == 'below_map' && $wpsl_settings['listing_below_no_scroll'] ) {
